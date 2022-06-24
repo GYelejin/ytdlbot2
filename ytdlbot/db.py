@@ -86,23 +86,25 @@ class Redis:
         db = MySQL()
         db.cur.execute("select * from vip")
         data = db.cur.fetchall()
-        fd = []
-        for item in data:
-            fd.append([item[0], item[1], sizeof_fmt(item[-1])])
+        fd = [[item[0], item[1], sizeof_fmt(item[-1])] for item in data]
         db_text = self.generate_table(["ID", "username", "quota"], fd)
 
-        fd = []
         hash_keys = self.r.hgetall("metrics")
-        for key, value in hash_keys.items():
-            if re.findall(r"^today|all", key):
-                fd.append([key, value])
+        fd = [
+            [key, value]
+            for key, value in hash_keys.items()
+            if re.findall(r"^today|all", key)
+        ]
+
         fd.sort(key=lambda x: x[0])
         metrics_text = self.generate_table(["name", "count"], fd)
 
-        fd = []
-        for key, value in hash_keys.items():
-            if re.findall(r"\d+", key):
-                fd.append([key, value])
+        fd = [
+            [key, value]
+            for key, value in hash_keys.items()
+            if re.findall(r"\d+", key)
+        ]
+
         fd.sort(key=lambda x: int(x[-1]), reverse=True)
         usage_text = self.generate_table(["UserID", "count"], fd)
 
@@ -272,7 +274,7 @@ class InfluxDB:
         self.client.write_points(json_body)
 
     def __fill_overall_data(self):
-        active = sum([i["active"] for i in self.data["data"]])
+        active = sum(i["active"] for i in self.data["data"])
         json_body = [
             {
                 "measurement": "active",
