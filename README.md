@@ -15,12 +15,11 @@
 
 ## Run natively on your machine
 
-1. clone code
-2. install ffmpeg
-3. install Python 3.6+
-4. pip3 install -r requirements.txt
-5. set environment variables `TOKEN`, `APP_ID` and `APP_HASH`, and more if you like.
-6. `python3 ytdl_bot.py`
+ install ffmpeg and Python 3.6+
+ clone code
+ `pip3 install -r requirements.txt`
+  set environment variables `TOKEN`, `APP_ID` and `APP_HASH`, and more if you like.
+ `python3 ytdl_bot.py`
 
 
 you can configure all the following environment variables:
