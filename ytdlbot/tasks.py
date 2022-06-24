@@ -118,7 +118,7 @@ def forward_video(url, client, bot_msg):
             vip.use_quota(chat_id, file_size)
         caption, _ = gen_cap(bot_msg, url, obj)
         res_msg.edit_text(caption, reply_markup=gen_video_markup())
-        bot_msg.edit_text(f"Download success!✅✅✅")
+        bot_msg.edit_text("Download success!✅✅✅")
         red.update_metrics("cache_hit")
         return True
 
@@ -141,12 +141,8 @@ def ytdl_download_entrance(bot_msg, client, url):
 
 
 def direct_download_entrance(bot_msg, client, url):
-    if ENABLE_CELERY:
-        # TODO disable it for now
-        direct_normal_download(bot_msg, client, url)
-        # direct_download_task.delay(bot_msg.chat.id, bot_msg.message_id, url)
-    else:
-        direct_normal_download(bot_msg, client, url)
+    # TODO disable it for now
+    direct_normal_download(bot_msg, client, url)
 
 
 def audio_entrance(bot_msg, client):
@@ -227,8 +223,7 @@ def normal_audio(bot_msg, client):
 
 
 def get_dl_source():
-    worker_name = os.getenv("WORKER_NAME")
-    if worker_name:
+    if worker_name := os.getenv("WORKER_NAME"):
         return f"Downloaded by  {worker_name}"
     return ""
 
@@ -239,7 +234,7 @@ def upload_transfer_sh(bm, paths: list) -> "str":
     headers = {'Content-Type': monitor.content_type}
     try:
         req = requests.post("https://transfer.sh", data=monitor, headers=headers)
-        bm.edit_text(f"Download success!✅")
+        bm.edit_text("Download success!✅")
         return re.sub(r"https://", "\nhttps://", req.text)
     except requests.exceptions.RequestException as e:
         return f"Upload failed!❌\n\n```{e}```"
@@ -268,7 +263,7 @@ def ytdl_normal_download(bot_msg, client, url):
         bot_msg.edit_text('Download success!✅')
     else:
         client.send_chat_action(chat_id, 'typing')
-        tb = result["error"][0:4000]
+        tb = result["error"][:4000]
         bot_msg.edit_text(f"Download failed!❌\n\n```{tb}```", disable_web_page_preview=True)
 
     temp_dir.cleanup()
@@ -318,11 +313,8 @@ def gen_cap(bm, url, video_path):
     chat_id = bm.chat.id
     user = bm.chat
     try:
-        user_info = "@{}({})-{}".format(
-            user.username or "N/A",
-            user.first_name or "" + user.last_name or "",
-            user.id
-        )
+        user_info = f'@{user.username or "N/A"}({user.first_name or f"{user.last_name}" or ""})-{user.id}'
+
     except Exception:
         user_info = ""
 
@@ -347,17 +339,15 @@ def gen_cap(bm, url, video_path):
 
 
 def gen_video_markup():
-    markup = InlineKeyboardMarkup(
+    return InlineKeyboardMarkup(
         [
             [  # First row
                 InlineKeyboardButton(  # Generates a callback query when pressed
-                    "convert to audio",
-                    callback_data="convert"
+                    "convert to audio", callback_data="convert"
                 )
             ]
         ]
     )
-    return markup
 
 
 @Panel.register
@@ -374,11 +364,11 @@ def hot_patch(*args):
     pip_install = "pip install -r requirements.txt"
     unset = "git config --unset http.https://github.com/.extraheader"
     pull_unshallow = "git pull origin --unshallow"
-    pull = "git pull"
-
     subprocess.call(unset, shell=True, cwd=app_path)
     if subprocess.call(pull_unshallow, shell=True, cwd=app_path) != 0:
         logging.info("Already unshallow, pulling now...")
+        pull = "git pull"
+
         subprocess.call(pull, shell=True, cwd=app_path)
 
     logging.info("Code is updated, applying hot patch now...")

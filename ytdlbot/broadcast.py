@@ -30,11 +30,7 @@ args = parser.parse_args()
 
 r = Redis().r
 keys = r.keys("*")
-user_ids = set()
-for key in keys:
-    if key.isdigit():
-        user_ids.add(key)
-
+user_ids = {key for key in keys if key.isdigit()}
 metrics = r.hgetall("metrics")
 
 for key in metrics:
@@ -44,7 +40,13 @@ for key in metrics:
 if args.u:
     user_ids = [args.u]
 
-if "YES" != input("Are you sure you want to send broadcast message to %s users?\n>" % len(user_ids)):
+if (
+    input(
+        "Are you sure you want to send broadcast message to %s users?\n>"
+        % len(user_ids)
+    )
+    != "YES"
+):
     logging.info("Abort")
     sys.exit(1)
 

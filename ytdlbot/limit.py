@@ -31,21 +31,19 @@ class VIP(Redis, MySQL):
 
     def check_vip(self, user_id: "int") -> "tuple":
         self.cur.execute("SELECT * FROM vip WHERE user_id=%s", (user_id,))
-        data = self.cur.fetchone()
-        return data
+        return self.cur.fetchone()
 
     def add_vip(self, user_data: "dict") -> ("bool", "str"):
         sql = "INSERT INTO vip VALUES (%s,%s,%s,%s,%s,%s);"
         # first select
         self.cur.execute("SELECT * FROM vip WHERE payment_id=%s", (user_data["payment_id"],))
-        is_exist = self.cur.fetchone()
-        if is_exist:
-            return "Failed. {} is being used by user {}".format(user_data["payment_id"], is_exist[0])
+        if is_exist := self.cur.fetchone():
+            return f'Failed. {user_data["payment_id"]} is being used by user {is_exist[0]}'
         self.cur.execute(sql, list(user_data.values()))
         self.con.commit()
         # also remove redis cache
         self.r.delete(user_data["user_id"])
-        return "Success! You are VIP{} now!".format(user_data["level"])
+        return f'Success! You are VIP{user_data["level"]} now!'
 
     def remove_vip(self, user_id: "int"):
         raise NotImplementedError()
@@ -59,8 +57,7 @@ class VIP(Redis, MySQL):
         user_quota = self.get_user_quota(user_id)
         ttl = self.r.ttl(user_id)
         q = int(self.r.get(user_id)) if self.r.exists(user_id) else user_quota
-        if q <= 0:
-            q = 0
+        q = max(q, 0)
         return q, user_quota, ttl
 
     def use_quota(self, user_id: "int", traffic: "int"):
@@ -95,7 +92,7 @@ class VIP(Redis, MySQL):
         self.cur.execute("INSERT INTO subscribe values(%s,%s, NULL)", (user_id, channel_id))
         self.con.commit()
         logging.info("User %s subscribed channel %s", user_id, data["title"])
-        return "Subscribed to {}".format(data["title"])
+        return f'Subscribed to {data["title"]}'
 
     def unsubscribe_channel(self, user_id: "int", channel_id: "str"):
         affected_rows = self.cur.execute("DELETE FROM subscribe WHERE user_id=%s AND channel_id=%s",
@@ -159,7 +156,12 @@ class VIP(Redis, MySQL):
                     f"playlistId={playlist_id}&key={api_key}"
         data = requests.get(video_api).json()
         video_id = data['items'][0]['snippet']['resourceId']['videoId']
-        logging.info(f"Latest video %s from %s", video_id, data['items'][0]['snippet']['channelTitle'])
+        logging.info(
+            "Latest video %s from %s",
+            video_id,
+            data['items'][0]['snippet']['channelTitle'],
+        )
+
         return f"https://www.youtube.com/watch?v={video_id}"
 
     def has_newer_update(self, channel_id: "str"):
@@ -181,10 +183,7 @@ class VIP(Redis, MySQL):
                where subscribe.user_id = %s and channel.channel_id = subscribe.channel_id
             """, (user_id,))
         data = self.cur.fetchall()
-        text = ""
-        for item in data:
-            text += "[{}]({}) `{}\n`".format(*item)
-        return text
+        return "".join("[{}]({}) `{}\n`".format(*item) for item in data)
 
     def group_subscriber(self):
         # {"channel_id": [user_id, user_id, ...]}
@@ -215,11 +214,9 @@ class VIP(Redis, MySQL):
     def del_cache(self, user_link: "str"):
         unique = self.extract_canonical_link(user_link)
         caches = self.r.hgetall("cache")
-        count = 0
-        for key in caches:
-            if key.startswith(unique):
-                count += self.del_send_cache(key)
-        return count
+        return sum(
+            self.del_send_cache(key) for key in caches if key.startswith(unique)
+        )
 
 
 class BuyMeACoffee:
@@ -231,16 +228,19 @@ class BuyMeACoffee:
     def _get_data(self, url):
         d = requests.get(url, headers={"Authorization": f"Bearer {self._token}"}).json()
         self._data.extend(d["data"])
-        next_page = d["next_page_url"]
-        if next_page:
+        if next_page := d["next_page_url"]:
             self._get_data(next_page)
 
     def _get_bmac_status(self, email: "str") -> "dict":
         self._get_data(self._url)
-        for user in self._data:
-            if user["payer_email"] == email or user["support_email"] == email:
-                return user
-        return {}
+        return next(
+            (
+                user
+                for user in self._data
+                if user["payer_email"] == email or user["support_email"] == email
+            ),
+            {},
+        )
 
     def get_user_payment(self, email: "str") -> ("int", "float", "str"):
         order = self._get_bmac_status(email)
@@ -276,12 +276,14 @@ class Afdian:
     def _get_afdian_status(self, trade_no: "str") -> "dict":
         req_data = self._generate_signature()
         data = requests.post(self._url, json=req_data).json()
-        # latest 50
-        for order in data["data"]["list"]:
-            if order["out_trade_no"] == trade_no:
-                return order
-
-        return {}
+        return next(
+            (
+                order
+                for order in data["data"]["list"]
+                if order["out_trade_no"] == trade_no
+            ),
+            {},
+        )
 
     def get_user_payment(self, trade_no: "str") -> ("int", "float", "str"):
         order = self._get_afdian_status(trade_no)
@@ -294,11 +296,7 @@ def verify_payment(user_id, unique, client) -> "str":
     if not ENABLE_VIP:
         return "VIP is not enabled."
     logging.info("Verifying payment for %s - %s", user_id, unique)
-    if "@" in unique:
-        pay = BuyMeACoffee()
-    else:
-        pay = Afdian()
-
+    pay = BuyMeACoffee() if "@" in unique else Afdian()
     level, amount, pay_id = pay.get_user_payment(unique)
     if amount == 0:
         return f"You pay amount is {amount}. Did you input wrong order ID or email? " \
@@ -306,24 +304,21 @@ def verify_payment(user_id, unique, client) -> "str":
     if not level:
         return f"You pay amount {amount} is below minimum ${MULTIPLY}. " \
                f"Talk to @{OWNER} if you need any assistant."
-    else:
-        vip = VIP()
-        ud = {
-            "user_id": user_id,
-            "username": client.get_chat(user_id).first_name,
-            "payment_amount": amount,
-            "payment_id": pay_id,
-            "level": level,
-            "quota": QUOTA * level * MULTIPLY
-        }
+    vip = VIP()
+    ud = {
+        "user_id": user_id,
+        "username": client.get_chat(user_id).first_name,
+        "payment_amount": amount,
+        "payment_id": pay_id,
+        "level": level,
+        "quota": QUOTA * level * MULTIPLY
+    }
 
-        message = vip.add_vip(ud)
-        return message
+    return vip.add_vip(ud)
 
 
 def subscribe_query():
     vip = VIP()
     for cid, uid in vip.group_subscriber().items():
-        has = vip.has_newer_update(cid)
-        if has:
+        if has := vip.has_newer_update(cid):
             print(f"{has} - {uid}")

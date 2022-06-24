@@ -55,11 +55,7 @@ def private_use(func):
             return
 
         # authorized users check
-        if AUTHORIZED_USER:
-            users = [int(i) for i in AUTHORIZED_USER.split(",")]
-        else:
-            users = []
-
+        users = [int(i) for i in AUTHORIZED_USER.split(",")] if AUTHORIZED_USER else []
         if users and chat_id and chat_id not in users:
             message.reply_text(bot_text.private, quote=True)
             return
@@ -125,8 +121,7 @@ def unsubscribe_handler(client: "Client", message: "types.Message"):
         client.send_message(chat_id, "/unsubscribe channel_id", disable_web_page_preview=True)
         return
 
-    rows = vip.unsubscribe_channel(chat_id, text[1])
-    if rows:
+    if rows := vip.unsubscribe_channel(chat_id, text[1]):
         text = f"Unsubscribed from {text[1]}"
     else:
         text = "Unable to find the channel."
@@ -136,8 +131,8 @@ def unsubscribe_handler(client: "Client", message: "types.Message"):
 @app.on_message(filters.command(["patch"]))
 def patch_handler(client: "Client", message: "types.Message"):
     username = message.from_user.username
-    chat_id = message.chat.id
     if username == OWNER:
+        chat_id = message.chat.id
         celery_app.control.broadcast("hot_patch")
         client.send_chat_action(chat_id, "typing")
         client.send_message(chat_id, "Oorah!")
@@ -185,8 +180,8 @@ def terms_handler(client: "Client", message: "types.Message"):
 @app.on_message(filters.command(["sub_count"]))
 def sub_count_handler(client: "Client", message: "types.Message"):
     username = message.from_user.username
-    chat_id = message.chat.id
     if username == OWNER:
+        chat_id = message.chat.id
         with BytesIO() as f:
             f.write(VIP().sub_count().encode("u8"))
             f.name = "subscription count.txt"
@@ -273,9 +268,8 @@ def download_handler(client: "Client", message: "types.Message"):
         # TODO
         result = VideosSearch(url, limit=5).result().get("result", [])
         text = ""
-        count = 1
         buttons = []
-        for item in result:
+        for count, item in enumerate(result, start=1):
             text += f"{count}. {item['title']} - {item['link']}\n\n"
             buttons.append(
                 InlineKeyboardButton(
@@ -283,8 +277,6 @@ def download_handler(client: "Client", message: "types.Message"):
                     callback_data=f"search_{item['id']}"
                 )
             )
-            count += 1
-
         markup = InlineKeyboardMarkup([buttons])
         client.send_message(chat_id, text, disable_web_page_preview=True, reply_markup=markup)
         return
@@ -335,7 +327,7 @@ def download_resolution_callback(client: "Client", callback_query: types.Callbac
 
 @app.on_callback_query(filters.regex(r"convert"))
 def audio_callback(client: "Client", callback_query: types.CallbackQuery):
-    callback_query.answer(f"Converting to audio...please wait patiently")
+    callback_query.answer("Converting to audio...please wait patiently")
     Redis().update_metrics("audio_request")
 
     vmsg = callback_query.message
@@ -353,8 +345,7 @@ def periodic_sub_check():
     vip = VIP()
     exceptions = pyrogram.errors.exceptions
     for cid, uids in vip.group_subscriber().items():
-        video_url = vip.has_newer_update(cid)
-        if video_url:
+        if video_url := vip.has_newer_update(cid):
             logging.info(f"periodic update:{video_url} - {uids}")
             for uid in uids:
                 try:
